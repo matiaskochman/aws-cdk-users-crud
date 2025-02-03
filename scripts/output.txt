@@ -17,9 +17,13 @@ The `cdk.json` file tells the CDK Toolkit how to execute your app.
 - `npx cdk synth` emits the synthesized CloudFormation template
 
 Outputs:
+https://ap3xzldn0c.execute-api.us-east-1.amazonaws.com/prod/
+
 AwsBackendUsersStack.UsersApiEndpointB5FC4B1D = https://mhbdgzoej1.execute-api.us-east-1.amazonaws.com/prod/
 Stack ARN:
 arn:aws:cloudformation:us-east-1:122610496028:stack/AwsBackendUsersStack/d8065ea0-e0a0-11ef-b0e9-12c72063c265
+
+API_URL="https://ap3xzldn0c.execute-api.us-east-1.amazonaws.com/prod/properties"
 
 
 /**************/
@@ -156,7 +160,296 @@ module.exports = {
 
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/createUser.d.ts
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/properties/createProperty.ts
+
+ * Archivo: lambda/createProperty.ts
+ * Descripción: Crea una propiedad en la tabla Properties de DynamoDB.
+ */
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
+import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
+import { marshall } from "@aws-sdk/util-dynamodb";
+import { Property } from "../../models/Property";
+
+const ddbClient = new DynamoDBClient({});
+const PROPERTIES_TABLE = process.env.PROPERTIES_TABLE_NAME || "";
+
+export const handler = async (
+  event: APIGatewayProxyEvent
+): Promise<APIGatewayProxyResult> => {
+  try {
+    if (!event.body) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ message: "Se requiere el body de la petición" }),
+      };
+    }
+    const data: Property = JSON.parse(event.body);
+
+    if (data.id === undefined || !data.titulo) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          message: "Se requieren los campos 'id' y 'titulo'",
+        }),
+      };
+    }
+
+    data.fechaPublicacion = new Date(data.fechaPublicacion).toISOString();
+
+    const item = marshall(data, { removeUndefinedValues: true });
+
+    const command = new PutItemCommand({
+      TableName: PROPERTIES_TABLE,
+      Item: item,
+    });
+    await ddbClient.send(command);
+
+    return {
+      statusCode: 201,
+      body: JSON.stringify(data),
+    };
+  } catch (error) {
+    console.error("Error creando la propiedad: ", error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ message: "Error interno del servidor" }),
+    };
+  }
+};
+
+
+/**************/
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/properties/deleteProperty.ts
+
+ * Archivo: lambda/deleteProperty.ts
+ * Descripción: Elimina una propiedad de la tabla Properties en DynamoDB.
+ */
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
+import { DynamoDBClient, DeleteItemCommand } from "@aws-sdk/client-dynamodb";
+
+const ddbClient = new DynamoDBClient({});
+const PROPERTIES_TABLE = process.env.PROPERTIES_TABLE_NAME || "";
+
+export const handler = async (
+  event: APIGatewayProxyEvent
+): Promise<APIGatewayProxyResult> => {
+  try {
+    const idParam = event.pathParameters?.id;
+    if (!idParam) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ message: "El parámetro id es obligatorio" }),
+      };
+    }
+    const id = Number(idParam);
+    if (isNaN(id)) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ message: "El id debe ser un número" }),
+      };
+    }
+
+    const command = new DeleteItemCommand({
+      TableName: PROPERTIES_TABLE,
+      Key: {
+        id: { N: id.toString() },
+      },
+    });
+    await ddbClient.send(command);
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ message: "Propiedad eliminada exitosamente" }),
+    };
+  } catch (error) {
+    console.error("Error eliminando la propiedad: ", error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ message: "Error interno del servidor" }),
+    };
+  }
+};
+
+
+/**************/
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/properties/getProperty.ts
+
+ * Archivo: lambda/getProperty.ts
+ * Descripción: Obtiene una propiedad por id desde la tabla Properties en DynamoDB.
+ */
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
+import { DynamoDBClient, GetItemCommand } from "@aws-sdk/client-dynamodb";
+import { unmarshall } from "@aws-sdk/util-dynamodb";
+import { Property } from "../../models/Property";
+
+const ddbClient = new DynamoDBClient({});
+const PROPERTIES_TABLE = process.env.PROPERTIES_TABLE_NAME || "";
+
+export const handler = async (
+  event: APIGatewayProxyEvent
+): Promise<APIGatewayProxyResult> => {
+  try {
+    const idParam = event.pathParameters?.id;
+    if (!idParam) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ message: "El parámetro id es obligatorio" }),
+      };
+    }
+    const id = Number(idParam);
+    if (isNaN(id)) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ message: "El id debe ser un número" }),
+      };
+    }
+
+    const command = new GetItemCommand({
+      TableName: PROPERTIES_TABLE,
+      Key: {
+        id: { N: id.toString() },
+      },
+    });
+
+    const response = await ddbClient.send(command);
+    if (!response.Item) {
+      return {
+        statusCode: 404,
+        body: JSON.stringify({ message: "Propiedad no encontrada" }),
+      };
+    }
+
+    const property = unmarshall(response.Item) as Property;
+    return {
+      statusCode: 200,
+      body: JSON.stringify(property),
+    };
+  } catch (error) {
+    console.error("Error obteniendo la propiedad: ", error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ message: "Error interno del servidor" }),
+    };
+  }
+};
+
+
+/**************/
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/properties/listProperties.ts
+
+ * Archivo: lambda/listProperties.ts
+ * Descripción: Lista todas las propiedades de la tabla Properties en DynamoDB.
+ */
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
+import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
+import { unmarshall } from "@aws-sdk/util-dynamodb";
+import { Property } from "../../models/Property";
+
+const ddbClient = new DynamoDBClient({});
+const PROPERTIES_TABLE = process.env.PROPERTIES_TABLE_NAME || "";
+
+export const handler = async (
+  event: APIGatewayProxyEvent
+): Promise<APIGatewayProxyResult> => {
+  try {
+    const command = new ScanCommand({
+      TableName: PROPERTIES_TABLE,
+    });
+    const response = await ddbClient.send(command);
+    const properties =
+      response.Items?.map((item) => unmarshall(item) as Property) || [];
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify(properties),
+    };
+  } catch (error) {
+    console.error("Error listando propiedades: ", error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ message: "Error interno del servidor" }),
+    };
+  }
+};
+
+
+/**************/
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/properties/updateProperty.ts
+
+ * Archivo: lambda/updateProperty.ts
+ * Descripción: Actualiza (reemplaza) una propiedad en la tabla Properties de DynamoDB.
+ * Se utiliza un reemplazo completo mediante PutItemCommand.
+ */
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
+import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
+import { marshall } from "@aws-sdk/util-dynamodb";
+import { Property } from "../../models/Property";
+
+const ddbClient = new DynamoDBClient({});
+const PROPERTIES_TABLE = process.env.PROPERTIES_TABLE_NAME || "";
+
+export const handler = async (
+  event: APIGatewayProxyEvent
+): Promise<APIGatewayProxyResult> => {
+  try {
+    const idParam = event.pathParameters?.id;
+    if (!idParam) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ message: "El parámetro id es obligatorio" }),
+      };
+    }
+    const id = Number(idParam);
+    if (isNaN(id)) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ message: "El id debe ser un número" }),
+      };
+    }
+    if (!event.body) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ message: "Se requiere el body de la petición" }),
+      };
+    }
+
+    const data: Property = JSON.parse(event.body);
+    if (data.id && Number(data.id) !== id) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          message: "El id del body debe coincidir con el id de la URL",
+        }),
+      };
+    }
+    data.id = id;
+
+    data.fechaPublicacion = new Date(data.fechaPublicacion).toISOString();
+
+    const item = marshall(data, { removeUndefinedValues: true });
+
+    const command = new PutItemCommand({
+      TableName: PROPERTIES_TABLE,
+      Item: item,
+    });
+    await ddbClient.send(command);
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify(data),
+    };
+  } catch (error) {
+    console.error("Error actualizando la propiedad: ", error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ message: "Error interno del servidor" }),
+    };
+  }
+};
+
+
+/**************/
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/createUser.d.ts
 
  * Archivo: lambda/createUser.ts
  * Descripción: Crea un usuario en DynamoDB
@@ -166,7 +459,7 @@ export declare const handler: (event: APIGatewayProxyEvent) => Promise<APIGatewa
 
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/createUser.js
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/createUser.js
 
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -219,7 +512,7 @@ const handler = async (event) => {
 exports.handler = handler;
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/createUser.ts
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/createUser.ts
 
  * Archivo: lambda/createUser.ts
  * Descripción: Crea un usuario en DynamoDB
@@ -280,7 +573,7 @@ export const handler = async (
 
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/deleteUser.d.ts
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/deleteUser.d.ts
 
  * Archivo: lambda/deleteUser.ts
  * Descripción: Elimina un usuario de DynamoDB
@@ -290,7 +583,7 @@ export declare const handler: (event: APIGatewayProxyEvent) => Promise<APIGatewa
 
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/deleteUser.js
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/deleteUser.js
 
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -328,7 +621,7 @@ const handler = async (event) => {
 exports.handler = handler;
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/deleteUser.ts
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/deleteUser.ts
 
  * Archivo: lambda/deleteUser.ts
  * Descripción: Elimina un usuario de DynamoDB
@@ -373,7 +666,7 @@ export const handler = async (
 
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/generateUploadUrl.d.ts
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/generateUploadUrl.d.ts
 
  * Archivo: lambda/generateUploadUrl.ts
  * Descripción: Genera una URL firmada para cargar archivos en S3
@@ -383,7 +676,7 @@ export declare const handler: (event: APIGatewayProxyEvent) => Promise<APIGatewa
 
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/generateUploadUrl.js
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/generateUploadUrl.js
 
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -424,7 +717,7 @@ const handler = async (event) => {
 exports.handler = handler;
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/generateUploadUrl.ts
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/generateUploadUrl.ts
 
  * Archivo: lambda/generateUploadUrl.ts
  * Descripción: Genera una URL firmada para cargar archivos en S3
@@ -472,7 +765,7 @@ export const handler = async (
 
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/getUser.d.ts
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/getUser.d.ts
 
  * Archivo: lambda/getUser.ts
  * Descripción: Obtiene un usuario por ID desde DynamoDB
@@ -482,7 +775,7 @@ export declare const handler: (event: APIGatewayProxyEvent) => Promise<APIGatewa
 
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/getUser.js
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/getUser.js
 
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -532,7 +825,7 @@ const handler = async (event) => {
 exports.handler = handler;
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/getUser.ts
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/getUser.ts
 
  * Archivo: lambda/getUser.ts
  * Descripción: Obtiene un usuario por ID desde DynamoDB
@@ -591,7 +884,7 @@ export const handler = async (
 
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/listUsers.d.ts
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/listUsers.d.ts
 
  * Archivo: lambda/listUsers.ts
  * Descripción: Lista todos los usuarios desde DynamoDB
@@ -601,7 +894,7 @@ export declare const handler: (event: APIGatewayProxyEvent) => Promise<APIGatewa
 
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/listUsers.js
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/listUsers.js
 
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -635,7 +928,7 @@ const handler = async (event) => {
 exports.handler = handler;
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/listUsers.ts
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/listUsers.ts
 
  * Archivo: lambda/listUsers.ts
  * Descripción: Lista todos los usuarios desde DynamoDB
@@ -675,7 +968,7 @@ export const handler = async (
 
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/updateUser.d.ts
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/updateUser.d.ts
 
  * Archivo: lambda/updateUser.ts
  * Descripción: Actualiza la información de un usuario en DynamoDB
@@ -685,7 +978,7 @@ export declare const handler: (event: APIGatewayProxyEvent) => Promise<APIGatewa
 
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/updateUser.js
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/updateUser.js
 
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -754,7 +1047,7 @@ const handler = async (event) => {
 exports.handler = handler;
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/updateUser.ts
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/lambda/users/updateUser.ts
 
  * Archivo: lambda/updateUser.ts
  * Descripción: Actualiza la información de un usuario en DynamoDB
@@ -978,7 +1271,7 @@ export class AwsBackendUsersStack extends cdk.Stack {
       tableName: "Users",
       partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PROVISIONED,
-      removalPolicy: cdk.RemovalPolicy.DESTROY, // Ajusta según el entorno
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     usersTable.addGlobalSecondaryIndex({
@@ -1007,17 +1300,39 @@ export class AwsBackendUsersStack extends cdk.Stack {
       bucketName: "user-uploads-cdk-v1",
       versioned: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      removalPolicy: cdk.RemovalPolicy.DESTROY, // Solo para testing; ajustar en producción
-      autoDeleteObjects: true, // Para ambientes de prueba
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
     });
 
+    const propertiesTable = new dynamodb.Table(this, "PropertiesTable", {
+      tableName: "Properties",
+      partitionKey: { name: "id", type: dynamodb.AttributeType.NUMBER },
+      billingMode: dynamodb.BillingMode.PROVISIONED,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const propertiesReadScaling = propertiesTable.autoScaleReadCapacity({
+      minCapacity: 5,
+      maxCapacity: 50,
+    });
+    propertiesReadScaling.scaleOnUtilization({
+      targetUtilizationPercent: 70,
+    });
+
+    const propertiesWriteScaling = propertiesTable.autoScaleWriteCapacity({
+      minCapacity: 5,
+      maxCapacity: 50,
+    });
+    propertiesWriteScaling.scaleOnUtilization({
+      targetUtilizationPercent: 70,
+    });
 
     const createUserLambda = new lambdaNodejs.NodejsFunction(
       this,
       "CreateUserFunction",
       {
         runtime: lambda.Runtime.NODEJS_18_X,
-        entry: path.join(__dirname, "../lambda/createUser.ts"),
+        entry: path.join(__dirname, "../lambda/users/createUser.ts"),
         handler: "handler",
         environment: {
           USERS_TABLE_NAME: usersTable.tableName,
@@ -1033,7 +1348,7 @@ export class AwsBackendUsersStack extends cdk.Stack {
       "GetUserFunction",
       {
         runtime: lambda.Runtime.NODEJS_18_X,
-        entry: path.join(__dirname, "../lambda/getUser.ts"),
+        entry: path.join(__dirname, "../lambda/users/getUser.ts"),
         handler: "handler",
         environment: { USERS_TABLE_NAME: usersTable.tableName },
       }
@@ -1045,7 +1360,7 @@ export class AwsBackendUsersStack extends cdk.Stack {
       "ListUsersFunction",
       {
         runtime: lambda.Runtime.NODEJS_18_X,
-        entry: path.join(__dirname, "../lambda/listUsers.ts"),
+        entry: path.join(__dirname, "../lambda/users/listUsers.ts"),
         handler: "handler",
         environment: { USERS_TABLE_NAME: usersTable.tableName },
       }
@@ -1057,7 +1372,7 @@ export class AwsBackendUsersStack extends cdk.Stack {
       "UpdateUserFunction",
       {
         runtime: lambda.Runtime.NODEJS_18_X,
-        entry: path.join(__dirname, "../lambda/updateUser.ts"),
+        entry: path.join(__dirname, "../lambda/users/updateUser.ts"),
         handler: "handler",
         environment: { USERS_TABLE_NAME: usersTable.tableName },
       }
@@ -1069,7 +1384,7 @@ export class AwsBackendUsersStack extends cdk.Stack {
       "DeleteUserFunction",
       {
         runtime: lambda.Runtime.NODEJS_18_X,
-        entry: path.join(__dirname, "../lambda/deleteUser.ts"),
+        entry: path.join(__dirname, "../lambda/users/deleteUser.ts"),
         handler: "handler",
         environment: { USERS_TABLE_NAME: usersTable.tableName },
       }
@@ -1081,7 +1396,7 @@ export class AwsBackendUsersStack extends cdk.Stack {
       "GenerateUploadUrlFunction",
       {
         runtime: lambda.Runtime.NODEJS_18_X,
-        entry: path.join(__dirname, "../lambda/generateUploadUrl.ts"),
+        entry: path.join(__dirname, "../lambda/users/generateUploadUrl.ts"),
         handler: "handler",
         environment: { BUCKET_NAME: userUploadsBucket.bucketName },
       }
@@ -1089,8 +1404,70 @@ export class AwsBackendUsersStack extends cdk.Stack {
     userUploadsBucket.grantPut(generateUploadUrlLambda);
     userUploadsBucket.grantRead(generateUploadUrlLambda);
 
-    const api = new apigateway.RestApi(this, "UsersApi", {
-      restApiName: "Users Service",
+    const createPropertyLambda = new lambdaNodejs.NodejsFunction(
+      this,
+      "CreatePropertyFunction",
+      {
+        runtime: lambda.Runtime.NODEJS_18_X,
+        entry: path.join(__dirname, "../lambda/properties/createProperty.ts"),
+        handler: "handler",
+        environment: {
+          PROPERTIES_TABLE_NAME: propertiesTable.tableName,
+        },
+      }
+    );
+    propertiesTable.grantWriteData(createPropertyLambda);
+
+    const getPropertyLambda = new lambdaNodejs.NodejsFunction(
+      this,
+      "GetPropertyFunction",
+      {
+        runtime: lambda.Runtime.NODEJS_18_X,
+        entry: path.join(__dirname, "../lambda/properties/getProperty.ts"),
+        handler: "handler",
+        environment: { PROPERTIES_TABLE_NAME: propertiesTable.tableName },
+      }
+    );
+    propertiesTable.grantReadData(getPropertyLambda);
+
+    const listPropertiesLambda = new lambdaNodejs.NodejsFunction(
+      this,
+      "ListPropertiesFunction",
+      {
+        runtime: lambda.Runtime.NODEJS_18_X,
+        entry: path.join(__dirname, "../lambda/properties/listProperties.ts"),
+        handler: "handler",
+        environment: { PROPERTIES_TABLE_NAME: propertiesTable.tableName },
+      }
+    );
+    propertiesTable.grantReadData(listPropertiesLambda);
+
+    const updatePropertyLambda = new lambdaNodejs.NodejsFunction(
+      this,
+      "UpdatePropertyFunction",
+      {
+        runtime: lambda.Runtime.NODEJS_18_X,
+        entry: path.join(__dirname, "../lambda/properties/updateProperty.ts"),
+        handler: "handler",
+        environment: { PROPERTIES_TABLE_NAME: propertiesTable.tableName },
+      }
+    );
+    propertiesTable.grantReadWriteData(updatePropertyLambda);
+
+    const deletePropertyLambda = new lambdaNodejs.NodejsFunction(
+      this,
+      "DeletePropertyFunction",
+      {
+        runtime: lambda.Runtime.NODEJS_18_X,
+        entry: path.join(__dirname, "../lambda/properties/deleteProperty.ts"),
+        handler: "handler",
+        environment: { PROPERTIES_TABLE_NAME: propertiesTable.tableName },
+      }
+    );
+    propertiesTable.grantWriteData(deletePropertyLambda);
+
+    const api = new apigateway.RestApi(this, "UsersAndPropertiesApi", {
+      restApiName: "Users & Properties Service",
       defaultCorsPreflightOptions: {
         allowOrigins: apigateway.Cors.ALL_ORIGINS,
         allowMethods: apigateway.Cors.ALL_METHODS,
@@ -1098,7 +1475,6 @@ export class AwsBackendUsersStack extends cdk.Stack {
     });
 
     const usersResource = api.root.addResource("users");
-
     usersResource.addMethod(
       "POST",
       new apigateway.LambdaIntegration(createUserLambda)
@@ -1122,12 +1498,71 @@ export class AwsBackendUsersStack extends cdk.Stack {
       new apigateway.LambdaIntegration(deleteUserLambda)
     );
 
-    const uploadUrlResource = api.root.addResource("upload-url");
-    uploadUrlResource.addMethod(
+    const propertiesResource = api.root.addResource("properties");
+    propertiesResource.addMethod(
       "POST",
-      new apigateway.LambdaIntegration(generateUploadUrlLambda)
+      new apigateway.LambdaIntegration(createPropertyLambda)
+    );
+    propertiesResource.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(listPropertiesLambda)
+    );
+
+    const propertyIdResource = propertiesResource.addResource("{id}");
+    propertyIdResource.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(getPropertyLambda)
+    );
+    propertyIdResource.addMethod(
+      "PUT",
+      new apigateway.LambdaIntegration(updatePropertyLambda)
+    );
+    propertyIdResource.addMethod(
+      "DELETE",
+      new apigateway.LambdaIntegration(deletePropertyLambda)
     );
   }
+}
+
+
+/**************/
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/models/Property.ts
+
+export interface Property {
+  id: number;
+  titulo: string;
+  ubicacion: {
+    direccion: string;
+    ciudad: string;
+    provincia: string;
+    pais: string;
+  };
+  precio: {
+    monto: number;
+    moneda: "USD" | "ARS" | "EUR"; // Se pueden agregar más monedas
+    periodo: "mensual" | "anual" | "semanal"; // Se pueden agregar más periodos
+  };
+  tipo: "departamento" | "casa" | "ph" | "terreno"; // Otros tipos de propiedades
+  ambientes: number;
+  dormitorios: number;
+  banos: number;
+  superficie: {
+    total: number; // en m²
+    cubierta: number; // en m²
+  };
+  amueblado: boolean;
+  servicios: string[];
+  amenities: string[];
+  ocupaciones: [string, string][]; // Rango de fechas ocupadas ["dd-mm-yyyy", "dd-mm-yyyy"]
+  fechasNoDisponibles: string[]; // Fechas específicas no disponibles ["dd-mm-yyyy"]
+  contacto: {
+    nombre: string;
+    telefono: string;
+    email: string;
+  };
+  imagenes: string[];
+  fechaPublicacion: string; // Formato ISO8601 ("YYYY-MM-DDTHH:MM:SSZ")
+  descripcion: string;
 }
 
 
@@ -1162,6 +1597,7 @@ export class AwsBackendUsersStack extends cdk.Stack {
     "@aws-sdk/client-dynamodb": "^3.738.0",
     "@aws-sdk/client-s3": "^3.740.0",
     "@aws-sdk/s3-request-presigner": "^3.740.0",
+    "@aws-sdk/util-dynamodb": "^3.738.0",
     "aws-cdk-lib": "^2.177.0",
     "constructs": "^10.4.2"
   }
@@ -1169,68 +1605,224 @@ export class AwsBackendUsersStack extends cdk.Stack {
 
 
 /**************/
-/Users/matiaskochman/dev/personal/aws/aws-backend-users/scripts/output.js
+/Users/matiaskochman/dev/personal/aws/aws-backend-users/scripts/curls.sh
 
-const fs = require("fs");
-const path = require("path");
+API_URL="https://ap3xzldn0c.execute-api.us-east-1.amazonaws.com/prod/properties"
 
-const projectRoot = path.resolve(__dirname, "..");
-const outputFilePath = path.join(__dirname, "output.txt");
-const fileExtensions = [".ts", ".json", ".js", ".md"];
-const excludeDirs = ["node_modules", "cdk.out"];
-const excludeFiles = ["package-lock.json"];
 
-function getFiles(dir) {
-  let results = [];
-  const list = fs.readdirSync(dir);
+curl -X POST "$API_URL" \
+     -H "Content-Type: application/json" \
+     -d '{
+          "id": 1,
+          "titulo": "Departamento en Palermo, Buenos Aires",
+          "ubicacion": {
+            "direccion": "Av. Santa Fe 3400",
+            "ciudad": "Buenos Aires",
+            "provincia": "Buenos Aires",
+            "pais": "Argentina"
+          },
+          "precio": {
+            "monto": 800,
+            "moneda": "USD",
+            "periodo": "mensual"
+          },
+          "tipo": "departamento",
+          "ambientes": 3,
+          "dormitorios": 2,
+          "banos": 1,
+          "superficie": {
+            "total": 80,
+            "cubierta": 70
+          },
+          "amueblado": true,
+          "servicios": ["wifi", "agua", "electricidad", "gas"],
+          "amenities": ["pileta", "gimnasio", "terraza", "seguridad 24hs"],
+          "ocupaciones": [["01-01-2025", "15-01-2025"]],
+          "fechasNoDisponibles": ["25-12-2024"],
+          "contacto": {
+            "nombre": "Juan Pérez",
+            "telefono": "+54 11 1234-5678",
+            "email": "juanperez@example.com"
+          },
+          "imagenes": [
+            "https://ejemplo.com/departamento-palermo1.jpg",
+            "https://ejemplo.com/departamento-palermo2.jpg"
+          ],
+          "fechaPublicacion": "2024-02-03T12:00:00Z",
+          "descripcion": "Departamento moderno en el corazón de Palermo, ideal para familias o parejas."
+        }'
 
-  list.forEach((file) => {
-    const filePath = path.join(dir, file);
-    const stat = fs.statSync(filePath);
 
-    if (stat && stat.isDirectory()) {
-      if (!excludeDirs.includes(file)) {
-        results = results.concat(getFiles(filePath));
-      }
-    } else if (
-      fileExtensions.some((ext) => file.endsWith(ext)) &&
-      !excludeFiles.includes(file)
-    ) {
-      results.push(filePath);
-    }
-  });
+curl -X POST "$API_URL" \
+     -H "Content-Type: application/json" \
+     -d '{
+          "id": 2,
+          "titulo": "Casa en Nordelta con jardín y pileta",
+          "ubicacion": {
+            "direccion": "Calle Los Álamos 123",
+            "ciudad": "Tigre",
+            "provincia": "Buenos Aires",
+            "pais": "Argentina"
+          },
+          "precio": {
+            "monto": 2500,
+            "moneda": "USD",
+            "periodo": "mensual"
+          },
+          "tipo": "casa",
+          "ambientes": 5,
+          "dormitorios": 4,
+          "banos": 3,
+          "superficie": {
+            "total": 300,
+            "cubierta": 250
+          },
+          "amueblado": false,
+          "servicios": ["wifi", "agua", "electricidad", "gas", "seguridad"],
+          "amenities": ["pileta", "quincho", "cochera doble"],
+          "ocupaciones": [],
+          "fechasNoDisponibles": ["01-05-2025"],
+          "contacto": {
+            "nombre": "María Rodríguez",
+            "telefono": "+54 11 9876-5432",
+            "email": "maria.rodriguez@example.com"
+          },
+          "imagenes": [
+            "https://ejemplo.com/casa-nordelta1.jpg",
+            "https://ejemplo.com/casa-nordelta2.jpg"
+          ],
+          "fechaPublicacion": "2024-02-05T15:00:00Z",
+          "descripcion": "Hermosa casa en barrio privado, con vista al lago y excelente seguridad."
+        }'
 
-  return results;
-}
 
-function removeComments(content, extension) {
-  if (extension === ".ts" || extension === ".js") {
-    return content
-      .split("\n")
-      .filter(
-        (line) => !line.trim().startsWith("//") && !line.trim().startsWith("/*")
-      )
-      .join("\n");
-  }
-  return content; // Para JSON y MD, no eliminamos comentarios
-}
+curl -X POST "$API_URL" \
+     -H "Content-Type: application/json" \
+     -d '{
+          "id": 3,
+          "titulo": "PH en San Telmo con terraza propia",
+          "ubicacion": {
+            "direccion": "Defensa 750",
+            "ciudad": "Buenos Aires",
+            "provincia": "Buenos Aires",
+            "pais": "Argentina"
+          },
+          "precio": {
+            "monto": 1200,
+            "moneda": "USD",
+            "periodo": "mensual"
+          },
+          "tipo": "ph",
+          "ambientes": 4,
+          "dormitorios": 2,
+          "banos": 2,
+          "superficie": {
+            "total": 150,
+            "cubierta": 100
+          },
+          "amueblado": true,
+          "servicios": ["wifi", "agua", "electricidad", "gas"],
+          "amenities": ["terraza", "parrilla"],
+          "ocupaciones": [["05-06-2025", "20-06-2025"]],
+          "fechasNoDisponibles": [],
+          "contacto": {
+            "nombre": "Carlos López",
+            "telefono": "+54 11 3333-5555",
+            "email": "carlos.lopez@example.com"
+          },
+          "imagenes": [
+            "https://ejemplo.com/ph-santelmo1.jpg",
+            "https://ejemplo.com/ph-santelmo2.jpg"
+          ],
+          "fechaPublicacion": "2024-02-06T18:00:00Z",
+          "descripcion": "PH con detalles únicos, techos altos y una increíble terraza en el corazón de San Telmo."
+        }'
 
-const files = getFiles(projectRoot);
-let outputContent = "";
 
-files.forEach((file) => {
-  try {
-    const ext = path.extname(file);
-    let content = fs.readFileSync(file, "utf8");
-    content = removeComments(content, ext);
-    outputContent += `/**************/\n${file}\n\n${content}\n\n`;
-  } catch (err) {
-    console.error(`Error leyendo el archivo ${file}:`, err);
-  }
-});
+curl -X POST "$API_URL" \
+     -H "Content-Type: application/json" \
+     -d '{
+          "id": 4,
+          "titulo": "Terreno en Bariloche con vista al lago",
+          "ubicacion": {
+            "direccion": "Ruta 40 km 2040",
+            "ciudad": "San Carlos de Bariloche",
+            "provincia": "Río Negro",
+            "pais": "Argentina"
+          },
+          "precio": {
+            "monto": 100000,
+            "moneda": "USD",
+            "periodo": "único"
+          },
+          "tipo": "terreno",
+          "ambientes": 0,
+          "dormitorios": 0,
+          "banos": 0,
+          "superficie": {
+            "total": 5000,
+            "cubierta": 0
+          },
+          "amueblado": false,
+          "servicios": ["electricidad", "agua"],
+          "amenities": [],
+          "ocupaciones": [],
+          "fechasNoDisponibles": [],
+          "contacto": {
+            "nombre": "Luciana Gómez",
+            "telefono": "+54 294 456-7890",
+            "email": "luciana.gomez@example.com"
+          },
+          "imagenes": [
+            "https://ejemplo.com/terreno-bariloche1.jpg",
+            "https://ejemplo.com/terreno-bariloche2.jpg"
+          ],
+          "fechaPublicacion": "2024-02-07T09:30:00Z",
+          "descripcion": "Terreno amplio con vista panorámica al lago Nahuel Huapi, ideal para construir cabañas."
+        }'
 
-fs.writeFileSync(outputFilePath, outputContent);
-console.log(`Archivos copiados a ${outputFilePath}`);
+
+curl -X POST "$API_URL" \
+     -H "Content-Type: application/json" \
+     -d '{
+          "id": 5,
+          "titulo": "Loft en Puerto Madero con vista al río",
+          "ubicacion": {
+            "direccion": "Av. Alicia Moreau de Justo 2000",
+            "ciudad": "Buenos Aires",
+            "provincia": "Buenos Aires",
+            "pais": "Argentina"
+          },
+          "precio": {
+            "monto": 3000,
+            "moneda": "USD",
+            "periodo": "mensual"
+          },
+          "tipo": "departamento",
+          "ambientes": 2,
+          "dormitorios": 1,
+          "banos": 1,
+          "superficie": {
+            "total": 90,
+            "cubierta": 85
+          },
+          "amueblado": true,
+          "servicios": ["wifi", "agua", "electricidad", "gas"],
+          "amenities": ["gimnasio", "pileta", "seguridad 24hs"],
+          "ocupaciones": [],
+          "fechasNoDisponibles": [],
+          "contacto": {
+            "nombre": "Federico Ramírez",
+            "telefono": "+54 11 7777-8888",
+            "email": "federico.ramirez@example.com"
+          },
+          "imagenes": [
+            "https://ejemplo.com/loft-pm1.jpg",
+            "https://ejemplo.com/loft-pm2.jpg"
+          ],
+          "fechaPublicacion": "2024-02-07T14:00:00Z",
+          "descripcion": "Exclusivo loft con gran diseño y vistas espectaculares al río."
+        }'
 
 
 /**************/

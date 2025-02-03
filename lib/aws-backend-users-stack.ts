@@ -13,12 +13,12 @@ export class AwsBackendUsersStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Creación de la tabla DynamoDB para usuarios
+    // Tabla de usuarios existente
     const usersTable = new dynamodb.Table(this, "UsersTable", {
       tableName: "Users",
       partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PROVISIONED,
-      removalPolicy: cdk.RemovalPolicy.DESTROY, // Ajusta según el entorno
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     usersTable.addGlobalSecondaryIndex({
@@ -43,29 +43,47 @@ export class AwsBackendUsersStack extends cdk.Stack {
       targetUtilizationPercent: 70,
     });
 
-    // Bucket de S3 para uploads de usuarios
+    // Bucket para uploads de usuarios
     const userUploadsBucket = new s3.Bucket(this, "UserUploadsBucket", {
       bucketName: "user-uploads-cdk-v1",
       versioned: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      removalPolicy: cdk.RemovalPolicy.DESTROY, // Solo para testing; ajustar en producción
-      autoDeleteObjects: true, // Para ambientes de prueba
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
     });
 
-    // Se elimina la creación de recursos de Cognito
-    // const userPool = new cognito.UserPool(this, "UserPool", { ... });
-    // const userPoolClient = new cognito.UserPoolClient(this, "UserPoolClient", { userPool });
-    // const cognitoAuthorizer = new apigateway.CognitoUserPoolsAuthorizer(this, "CognitoAuthorizer", {
-    //   cognitoUserPools: [userPool],
-    // });
+    // Nueva tabla para propiedades en alquiler
+    const propertiesTable = new dynamodb.Table(this, "PropertiesTable", {
+      tableName: "Properties",
+      partitionKey: { name: "id", type: dynamodb.AttributeType.NUMBER },
+      billingMode: dynamodb.BillingMode.PROVISIONED,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
 
-    // Definición de funciones Lambda
+    // (Opcional) Configuración de escalado automático para la tabla de propiedades
+    const propertiesReadScaling = propertiesTable.autoScaleReadCapacity({
+      minCapacity: 5,
+      maxCapacity: 50,
+    });
+    propertiesReadScaling.scaleOnUtilization({
+      targetUtilizationPercent: 70,
+    });
+
+    const propertiesWriteScaling = propertiesTable.autoScaleWriteCapacity({
+      minCapacity: 5,
+      maxCapacity: 50,
+    });
+    propertiesWriteScaling.scaleOnUtilization({
+      targetUtilizationPercent: 70,
+    });
+
+    // Lambdas para usuarios (sin cambios respecto a la versión anterior)
     const createUserLambda = new lambdaNodejs.NodejsFunction(
       this,
       "CreateUserFunction",
       {
         runtime: lambda.Runtime.NODEJS_18_X,
-        entry: path.join(__dirname, "../lambda/createUser.ts"),
+        entry: path.join(__dirname, "../lambda/users/createUser.ts"),
         handler: "handler",
         environment: {
           USERS_TABLE_NAME: usersTable.tableName,
@@ -81,7 +99,7 @@ export class AwsBackendUsersStack extends cdk.Stack {
       "GetUserFunction",
       {
         runtime: lambda.Runtime.NODEJS_18_X,
-        entry: path.join(__dirname, "../lambda/getUser.ts"),
+        entry: path.join(__dirname, "../lambda/users/getUser.ts"),
         handler: "handler",
         environment: { USERS_TABLE_NAME: usersTable.tableName },
       }
@@ -93,7 +111,7 @@ export class AwsBackendUsersStack extends cdk.Stack {
       "ListUsersFunction",
       {
         runtime: lambda.Runtime.NODEJS_18_X,
-        entry: path.join(__dirname, "../lambda/listUsers.ts"),
+        entry: path.join(__dirname, "../lambda/users/listUsers.ts"),
         handler: "handler",
         environment: { USERS_TABLE_NAME: usersTable.tableName },
       }
@@ -105,7 +123,7 @@ export class AwsBackendUsersStack extends cdk.Stack {
       "UpdateUserFunction",
       {
         runtime: lambda.Runtime.NODEJS_18_X,
-        entry: path.join(__dirname, "../lambda/updateUser.ts"),
+        entry: path.join(__dirname, "../lambda/users/updateUser.ts"),
         handler: "handler",
         environment: { USERS_TABLE_NAME: usersTable.tableName },
       }
@@ -117,7 +135,7 @@ export class AwsBackendUsersStack extends cdk.Stack {
       "DeleteUserFunction",
       {
         runtime: lambda.Runtime.NODEJS_18_X,
-        entry: path.join(__dirname, "../lambda/deleteUser.ts"),
+        entry: path.join(__dirname, "../lambda/users/deleteUser.ts"),
         handler: "handler",
         environment: { USERS_TABLE_NAME: usersTable.tableName },
       }
@@ -129,7 +147,7 @@ export class AwsBackendUsersStack extends cdk.Stack {
       "GenerateUploadUrlFunction",
       {
         runtime: lambda.Runtime.NODEJS_18_X,
-        entry: path.join(__dirname, "../lambda/generateUploadUrl.ts"),
+        entry: path.join(__dirname, "../lambda/users/generateUploadUrl.ts"),
         handler: "handler",
         environment: { BUCKET_NAME: userUploadsBucket.bucketName },
       }
@@ -137,18 +155,80 @@ export class AwsBackendUsersStack extends cdk.Stack {
     userUploadsBucket.grantPut(generateUploadUrlLambda);
     userUploadsBucket.grantRead(generateUploadUrlLambda);
 
-    // Creación de la API Gateway sin autorización (para pruebas iniciales)
-    const api = new apigateway.RestApi(this, "UsersApi", {
-      restApiName: "Users Service",
+    // Lambdas para gestionar propiedades en alquiler
+    const createPropertyLambda = new lambdaNodejs.NodejsFunction(
+      this,
+      "CreatePropertyFunction",
+      {
+        runtime: lambda.Runtime.NODEJS_18_X,
+        entry: path.join(__dirname, "../lambda/properties/createProperty.ts"),
+        handler: "handler",
+        environment: {
+          PROPERTIES_TABLE_NAME: propertiesTable.tableName,
+        },
+      }
+    );
+    propertiesTable.grantWriteData(createPropertyLambda);
+
+    const getPropertyLambda = new lambdaNodejs.NodejsFunction(
+      this,
+      "GetPropertyFunction",
+      {
+        runtime: lambda.Runtime.NODEJS_18_X,
+        entry: path.join(__dirname, "../lambda/properties/getProperty.ts"),
+        handler: "handler",
+        environment: { PROPERTIES_TABLE_NAME: propertiesTable.tableName },
+      }
+    );
+    propertiesTable.grantReadData(getPropertyLambda);
+
+    const listPropertiesLambda = new lambdaNodejs.NodejsFunction(
+      this,
+      "ListPropertiesFunction",
+      {
+        runtime: lambda.Runtime.NODEJS_18_X,
+        entry: path.join(__dirname, "../lambda/properties/listProperties.ts"),
+        handler: "handler",
+        environment: { PROPERTIES_TABLE_NAME: propertiesTable.tableName },
+      }
+    );
+    propertiesTable.grantReadData(listPropertiesLambda);
+
+    const updatePropertyLambda = new lambdaNodejs.NodejsFunction(
+      this,
+      "UpdatePropertyFunction",
+      {
+        runtime: lambda.Runtime.NODEJS_18_X,
+        entry: path.join(__dirname, "../lambda/properties/updateProperty.ts"),
+        handler: "handler",
+        environment: { PROPERTIES_TABLE_NAME: propertiesTable.tableName },
+      }
+    );
+    propertiesTable.grantReadWriteData(updatePropertyLambda);
+
+    const deletePropertyLambda = new lambdaNodejs.NodejsFunction(
+      this,
+      "DeletePropertyFunction",
+      {
+        runtime: lambda.Runtime.NODEJS_18_X,
+        entry: path.join(__dirname, "../lambda/properties/deleteProperty.ts"),
+        handler: "handler",
+        environment: { PROPERTIES_TABLE_NAME: propertiesTable.tableName },
+      }
+    );
+    propertiesTable.grantWriteData(deletePropertyLambda);
+
+    // API Gateway sin seguridad (para pruebas iniciales)
+    const api = new apigateway.RestApi(this, "UsersAndPropertiesApi", {
+      restApiName: "Users & Properties Service",
       defaultCorsPreflightOptions: {
         allowOrigins: apigateway.Cors.ALL_ORIGINS,
         allowMethods: apigateway.Cors.ALL_METHODS,
       },
     });
 
+    // Endpoints para usuarios
     const usersResource = api.root.addResource("users");
-
-    // Métodos sin configuraciones de seguridad
     usersResource.addMethod(
       "POST",
       new apigateway.LambdaIntegration(createUserLambda)
@@ -172,10 +252,29 @@ export class AwsBackendUsersStack extends cdk.Stack {
       new apigateway.LambdaIntegration(deleteUserLambda)
     );
 
-    const uploadUrlResource = api.root.addResource("upload-url");
-    uploadUrlResource.addMethod(
+    // Endpoints para propiedades en alquiler
+    const propertiesResource = api.root.addResource("properties");
+    propertiesResource.addMethod(
       "POST",
-      new apigateway.LambdaIntegration(generateUploadUrlLambda)
+      new apigateway.LambdaIntegration(createPropertyLambda)
+    );
+    propertiesResource.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(listPropertiesLambda)
+    );
+
+    const propertyIdResource = propertiesResource.addResource("{id}");
+    propertyIdResource.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(getPropertyLambda)
+    );
+    propertyIdResource.addMethod(
+      "PUT",
+      new apigateway.LambdaIntegration(updatePropertyLambda)
+    );
+    propertyIdResource.addMethod(
+      "DELETE",
+      new apigateway.LambdaIntegration(deletePropertyLambda)
     );
   }
 }
