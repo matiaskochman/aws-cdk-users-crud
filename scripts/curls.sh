@@ -1,6 +1,5 @@
 API_URL="https://ap3xzldn0c.execute-api.us-east-1.amazonaws.com/prod/properties"
 
-
 curl -X POST "$API_URL" \
      -H "Content-Type: application/json" \
      -d '{
@@ -214,3 +213,15 @@ curl -X POST "$API_URL" \
           "fechaPublicacion": "2024-02-07T14:00:00Z",
           "descripcion": "Exclusivo loft con gran diseño y vistas espectaculares al río."
         }'
+
+
+
+curl -X POST "$API_URL/1/occupy" \
+     -H "Content-Type: application/json" \
+     -d '{
+          "startDate": "10-02-2025",
+          "endDate": "20-02-2025"
+        }'
+
+
+curl -X GET "$API_URL/1"

@@ -21,3 +21,19 @@ Stack ARN:
 arn:aws:cloudformation:us-east-1:122610496028:stack/AwsBackendUsersStack/d8065ea0-e0a0-11ef-b0e9-12c72063c265
 
 API_URL="https://ap3xzldn0c.execute-api.us-east-1.amazonaws.com/prod/properties"
+
+docker compose up -d
+./scripts/init-localstack.sh
+cdklocal bootstrap
+export AWS_ACCESS_KEY_ID=test
+export AWS_SECRET_ACCESS_KEY=test
+export AWS_DEFAULT_REGION=us-east-1
+
+# Then:
+
+cdklocal bootstrap
+cdklocal deploy
+
+awslocal dynamodb list-tables
+awslocal s3 ls
+awslocal apigateway get-rest-apis

@@ -6,7 +6,19 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const s3Client = new S3Client({});
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+
+const isLocal = process.env.USE_LOCALSTACK === "true";
+
+const s3Client = new S3Client({
+  endpoint: isLocal ? "http://localhost:4566" : undefined,
+  region: "us-east-1",
+  forcePathStyle: true, // Necesario para S3 en LocalStack
+  credentials: isLocal
+    ? { accessKeyId: "test", secretAccessKey: "test" }
+    : undefined,
+});
+
 const BUCKET_NAME = process.env.BUCKET_NAME || "";
 
 export const handler = async (

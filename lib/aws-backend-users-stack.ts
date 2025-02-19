@@ -276,5 +276,24 @@ export class AwsBackendUsersStack extends cdk.Stack {
       "DELETE",
       new apigateway.LambdaIntegration(deletePropertyLambda)
     );
+
+    // Dentro del stack, luego de crear la función addOccupationLambda
+    const addOccupationLambda = new lambdaNodejs.NodejsFunction(
+      this,
+      "AddOccupationFunction",
+      {
+        runtime: lambda.Runtime.NODEJS_18_X,
+        entry: path.join(__dirname, "../lambda/properties/addOccupation.ts"),
+        handler: "handler",
+        environment: { PROPERTIES_TABLE_NAME: propertiesTable.tableName },
+      }
+    );
+    propertiesTable.grantWriteData(addOccupationLambda);
+    // Suponiendo que ya tienes definido el recurso para propiedades (propertyIdResource)
+    const addOccupationResource = propertyIdResource.addResource("occupy");
+    addOccupationResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(addOccupationLambda)
+    );
   }
 }
