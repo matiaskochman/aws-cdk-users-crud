@@ -1,6 +1,6 @@
 API_URL="https://msipz3cokx.execute-api.localhost.localstack.cloud:4566/prod"
 
-
+API_URL=https://xsuirjcbzx.execute-api.localhost.localstack.cloud:4566/prod/
 curl -X POST "$API_URL/users" \
      -H "Content-Type: application/json" \
      -d '{
